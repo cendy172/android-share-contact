@@ -1,19 +1,22 @@
 package com.example.businesscardholder;
 
-import static android.provider.ContactsContract.Data.CONTENT_URI;
-import static android.view.LayoutInflater.from;
-import static com.example.businesscardholder.R.layout.list_btn;
-import static com.example.businesscardholder.R.layout.list_text;
-
 import android.app.Activity;
-import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
 import android.net.Uri;
+import android.os.Environment;
+import android.provider.ContactsContract;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+
+import java.io.*;
+
+import static android.view.LayoutInflater.from;
+import static com.example.businesscardholder.R.layout.list_btn;
+import static com.example.businesscardholder.R.layout.list_text;
 
 public class ContactItem
 {
@@ -28,6 +31,7 @@ public class ContactItem
 	public static final int TYPE_PHONE = 1;
 	public static final int TYPE_BUTTON = 2;
 	public static final int TYPE_CONTACT_ID = 3;
+	private String lookupKey;
 
 	public ContactItem(Context context, String name, String phone, Bitmap head)
 	{
@@ -37,9 +41,10 @@ public class ContactItem
 		this.head = head;
 	}
 
-	public ContactItem(Context context, String name, String phone)
+	public ContactItem(Context context, String name, String phone, Bitmap head, String lookupKey)
 	{
 		this(context, name, phone, null);
+		this.lookupKey = lookupKey;
 	}
 
 	public View generateView(int typeId)
@@ -92,18 +97,16 @@ public class ContactItem
 		{
 			public void onClick(View v)
 			{
-				Uri personUri = ContentUris.withAppendedId(CONTENT_URI, contactId);
+				Uri personUri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_VCARD_URI, lookupKey);
 
-				Intent intent = new Intent();
-				intent.setAction(Intent.ACTION_SEND);
-				intent.setType("*/*");
-				// intent.setData(personUri);
-				// intent.putExtra(Intent.EXTRA_STREAM, personUri);
-				// intent.putExtra(Intent.EXTRA_TITLE, name);
-				// intent.putExtra(Intent.EXTRA_PHONE_NUMBER, phone);
-				// 此处添加share的代码
-				context.startActivity(intent);
+				Intent intent = new Intent(Intent.ACTION_SEND);
+				intent.setType("text/plain");
+                File vCard = getVCard(personUri);
+                intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(vCard));
+				intent.putExtra(Intent.EXTRA_SUBJECT, name);
 
+				context.startActivity(Intent.createChooser(intent, "send contact"));
+                vCard.deleteOnExit();
 			}
 		});
 		bluetoothBtn.setOnClickListener(new Button.OnClickListener()
@@ -127,6 +130,34 @@ public class ContactItem
 			}
 		});
 		return view;
+	}
+
+	private File getVCard(Uri uri)
+	{
+		String storage_path = Environment.getExternalStorageDirectory().toString() + "/" + name + ".vcf";
+		File file = new File(storage_path);
+		try
+		{
+			AssetFileDescriptor fd = context.getContentResolver().openAssetFileDescriptor(uri, "r");
+			FileInputStream fis = fd.createInputStream();
+			byte[] buf = new byte[(int) fd.getDeclaredLength()];
+			if (0 < fis.read(buf))
+			{
+				file.createNewFile();
+				FileOutputStream fileOutputStream = new FileOutputStream(file);
+				OutputStreamWriter outputStreamWriter = new OutputStreamWriter(fileOutputStream);
+				outputStreamWriter.write(new String(buf));
+				outputStreamWriter.flush();
+				outputStreamWriter.close();
+			}
+		} catch (FileNotFoundException e)
+		{
+			e.printStackTrace();
+		} catch (IOException e)
+		{
+			e.printStackTrace();
+		}
+		return file;
 	}
 
 	public String getValue(int typeId)
